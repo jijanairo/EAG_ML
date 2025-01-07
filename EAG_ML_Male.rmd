@@ -1,0 +1,87 @@
+---
+title: "Molecular complexity - based classification of semiochemicals (Male, MC only)"
+author: "Prepared by Dr. Jose Isagani Janairo"
+date: "12/11/2024"
+output: html_document
+---
+
+```{r 1}
+setwd("~/Documents/Research/EAG ML")
+
+set.seed(101831)
+
+library(dplyr)
+library(caret)
+library(ggpubr)
+library(iml)
+library(pROC)
+
+mother_dataset <- read.csv("male_DW_class2.csv")
+mother_dataset$Class <- as.factor(mother_dataset$Class)
+str(mother_dataset)
+
+dataset <- mother_dataset[2:9]
+
+validation_index <- createDataPartition(dataset$Class, p=0.7, list=FALSE)
+validation <- dataset[-validation_index,]
+dataset <- dataset[validation_index,]
+validation$Class <- as.factor(validation$Class)
+
+control <- trainControl(method="cv", number=10, classProbs = T, savePredictions = "all", summaryFunction = twoClassSummary)
+metric <- "ROC"
+
+fit.glm <- train(Class~., data=dataset, method="glm", metric=metric, trControl=control)
+fit.glm
+
+fit.svmR <- train(Class~ ., data=dataset, method="svmRadial", metric=metric, trControl=control, tuneLength = 5, preProc = c("center","scale"))
+fit.svmR
+
+fit.svmL <- train(Class~., data=dataset, method="svmLinear", metric=metric, trControl=control, tuneLength = 5, preProc = c("center","scale"))
+fit.svmL
+
+fit.svmP <- train(Class~., data=dataset, method="svmPoly", metric=metric, trControl=control, tuneLength = 5, preProc = c("center","scale"))
+fit.svmP
+
+# predicting using best model
+validation$Class <- as.factor(validation$Class)
+predictions <- predict(fit.svmR, validation, type = "prob") #for AUC calculation
+prediction <- predict(fit.svmR, validation)
+show <- confusionMatrix(prediction, validation$Class, mode = "everything") # for confusion matrix
+show
+#AUC calculation
+result.roc <- roc(validation$Class, predictions$A)
+
+roc_test <-roc(validation$Class, predictions$A, smoothed = T, 
+               ci = T, ci.alpha = 0.9,stratified = F, plot = T, auc.polygon = T, 
+               max.auc.polygon = T, grid = F, print.auc = T, show.thres = T)
+
+#Feature selection
+x <- dataset[2:8]
+predictor <- Predictor$new(fit.svmR, data = x, y = dataset$Class)
+shapley <- Shapley$new(predictor, x.interest = x[1,])
+plot(shapley)
+shapley$results
+
+# Optimized model
+fit.svmR2 <- train(Class~ Total.Surface.Area + sp3.Carbon.Fraction +  
+                     Shape.Index + Rotatable.Bonds + Molecular.Flexibility + 
+                     Molecular.Complexity, data=dataset, method="svmRadial", 
+                   metric=metric, trControl=control, tuneLength = 5, 
+                   preProc = c("center","scale"))
+fit.svmR2
+
+# predicting using best model
+validation$Class <- as.factor(validation$Class)
+predictions2 <- predict(fit.svmR2, validation, type = "prob") #for AUC calculation
+prediction2 <- predict(fit.svmR2, validation)
+show2 <- confusionMatrix(prediction2, validation$Class, mode = "everything") # for confusion matrix
+show2
+#AUC calculation
+result.roc2 <- roc(validation$Class, predictions2$A)
+
+roc_test2 <-roc(validation$Class, predictions2$A, smoothed = T, 
+               ci = T, ci.alpha = 0.9,stratified = F, plot = T, auc.polygon = T, 
+               max.auc.polygon = T, grid = F, print.auc = T, show.thres = T)
+
+
+```
